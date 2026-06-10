@@ -209,6 +209,22 @@ wss.on('connection', (ws, req) => {
                 }
                 break;
             }
+            case 'presence': {
+                const player = connectedPlayers.get(playerToken);
+                if (!player) break;
+                const payload = {
+                    type: 'presence',
+                    from: playerUsername,
+                    online: true,
+                    server: msg.server
+                };
+                for (const [t, p] of connectedPlayers) {
+                    if (t !== playerToken && p.friends.has(playerToken)) {
+                        send(p.ws, payload);
+                    }
+                }
+                break;
+            }
             case 'pong': {
                 // Client pong received; update last-seen (implicit via message)
                 break;
