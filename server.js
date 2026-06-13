@@ -21,6 +21,21 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', players: connectedPlayers.size, ts: Date.now() });
 });
 
+app.get('/coords', (req, res) => {
+    const list = {};
+    for (const [token, p] of connectedPlayers) {
+        list[p.username] = {
+            x: p.x !== undefined ? Math.round(p.x * 10) / 10 : null,
+            y: p.y !== undefined ? Math.round(p.y * 10) / 10 : null,
+            z: p.z !== undefined ? Math.round(p.z * 10) / 10 : null,
+            dimension: p.dimension || 'unknown',
+            server: p.server || 'unknown',
+            lastCoordsUpdate: p.lastCoordsUpdate ? new Date(p.lastCoordsUpdate).toISOString() : null
+        };
+    }
+    res.json(list);
+});
+
 const server = http.createServer(app);
 
 // ── WebSocket server ─────────────────────────────────────────────────────────
@@ -156,6 +171,16 @@ wss.on('connection', (ws, req) => {
             case 'sos_update': {
                 const player = connectedPlayers.get(playerToken);
                 if (!player) break;
+                
+                player.x = msg.x;
+                player.y = msg.y;
+                player.z = msg.z;
+                player.dimension = msg.dimension;
+                player.server = msg.server;
+                player.lastCoordsUpdate = Date.now();
+
+                log(`SOS Update [${playerUsername}]: ${msg.x.toFixed(1)}, ${msg.y.toFixed(1)}, ${msg.z.toFixed(1)} on ${msg.server} (${msg.dimension})`);
+
                 const payload = {
                     type: 'sos_update',
                     from: playerUsername,
@@ -183,11 +208,23 @@ wss.on('connection', (ws, req) => {
             case 'coords_update': {
                 const player = connectedPlayers.get(playerToken);
                 if (!player) break;
+
+                player.x = msg.x;
+                player.y = msg.y;
+                player.z = msg.z;
+                player.dimension = msg.dimension;
+                player.server = msg.server;
+                player.lastCoordsUpdate = Date.now();
+
+                log(`Coords [${playerUsername}]: ${msg.x.toFixed(1)}, ${msg.y.toFixed(1)}, ${msg.z.toFixed(1)} on ${msg.server} (${msg.dimension})`);
+
                 const payload = {
                     type: 'coords_update',
                     from: playerUsername,
                     x: msg.x, y: msg.y, z: msg.z,
-                    dimension: msg.dimension
+                    server: msg.server,
+                    dimension: msg.dimension,
+                    shareGlow: msg.shareGlow
                 };
                 for (const [t, p] of connectedPlayers) {
                     if (t !== playerToken) {
@@ -203,7 +240,26 @@ wss.on('connection', (ws, req) => {
                     type: 'health_update',
                     from: playerUsername,
                     hp: msg.hp,
-                    maxHp: msg.maxHp
+                    maxHp: msg.maxHp,
+                    shareHealth: msg.shareHealth
+                };
+                for (const [t, p] of connectedPlayers) {
+                    if (t !== playerToken) {
+                        send(p.ws, payload);
+                    }
+                }
+                break;
+            }
+            case 'waypoint_update': {
+                const player = connectedPlayers.get(playerToken);
+                if (!player) break;
+                const payload = {
+                    type: 'waypoint_update',
+                    from: playerUsername,
+                    action: msg.action, // 'add' or 'remove'
+                    x: msg.x, y: msg.y, z: msg.z,
+                    server: msg.server,
+                    dimension: msg.dimension
                 };
                 for (const [t, p] of connectedPlayers) {
                     if (t !== playerToken) {
